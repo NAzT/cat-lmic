@@ -180,7 +180,7 @@ void onEvent (ev_t ev) {
 
 void setup() {
     Serial.begin(115200);
-    delay(1500);   // Give time for the seral monitor to start up
+      SPI.begin(5, 19, 27);
     Serial.println(F("Starting..."));
 
     // printESPRevision();
