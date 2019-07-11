@@ -47,7 +47,7 @@ static const u4_t DEVADDR = 0x12EF02XX;
 
 // LoRaWAN NwkSKey, network session key
 static const PROGMEM u1_t NWKSKEY[16] = { 0x28, 0xAE, 0xD2, 0x2B, 0x7E, 0x15, 0x16, 0xA6, 0x09, 0xCF, 0xAB, 0xF7, 0x15, 0x88, 0x4F, 0x3C };
- 
+
 // LoRaWAN AppSKey, application session key
 static const u1_t PROGMEM APPSKEY[16] = { 0x16, 0x28, 0xAE, 0x2B, 0x7E, 0x15, 0xD2, 0xA6, 0xAB, 0xF7, 0xCF, 0x4F, 0x3C, 0x15, 0x88, 0x09 };
 
@@ -78,7 +78,7 @@ const lmic_pinmap lmic_pins = {
   .rxtx = LMIC_UNUSED_PIN,
   .rst = A1,
   .dio = {6, 7, 8},
-}; 
+};
 
 void onEvent (ev_t ev) {
   Serial.print(os_getTime());
@@ -148,19 +148,19 @@ void onEvent (ev_t ev) {
 
 void do_send(osjob_t* j) {
 
-      // 
+      //
       // user may add data acquire from sensors here, and then add the data to lpp
       // more lpp device support be visited https://www.thethingsnetwork.org/docs/devices/arduino/api/cayennelpp.html
       //
       // sent sampling data to Cayenne
       temp_C     += 2;
       pressure   += 10;
-      
+
       lpp.reset();
       lpp.addTemperature(1, temp_C);
       lpp.addBarometricPressure(2, pressure);
       lpp.addGPS(3, lat, lon, 2);
-      
+
       // Check if there is not a current TX/RX job running
       if (LMIC.opmode & OP_TXRXPEND) {
         Serial.println(F("OP_TXRXPEND, not sending"));

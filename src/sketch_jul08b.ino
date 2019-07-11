@@ -1,59 +1,35 @@
-/*******************************************************************************
-   Copyright (c) 2015 Thomas Telkamp and Matthijs Kooijman
 
-   Permission is hereby granted, free of charge, to anyone
-   obtaining a copy of this document and accompanying files,
-   to do whatever they want with them without any restriction,
-   including, but not limited to, copying, modification and redistribution.
-   NO WARRANTY OF ANY KIND IS PROVIDED.
+// MIT License
+// https://github.com/gonzalocasas/arduino-uno-dragino-lorawan/blob/master/LICENSE
+// Based on examples from https://github.com/matthijskooijman/arduino-lmic
+// Copyright (c) 2015 Thomas Telkamp and Matthijs Kooijman
 
-   This example sends a valid LoRaWAN packet with payload "Hello,
-   world!", using frequency and encryption settings matching those of
-   the The Things Network.
-
-   This uses ABP (Activation-by-personalisation), where a DevAddr and
-   Session keys are preconfigured (unlike OTAA, where a DevEUI and
-   application key is configured, while the DevAddr and session keys are
-   assigned/generated in the over-the-air-activation procedure).
-
-   Note: LoRaWAN per sub-band duty-cycle limitation is enforced (1% in
-   g1, 0.1% in g2), but not the TTN fair usage policy (which is probably
-   violated by this sketch when left running for longer)!
-
-   To use this sketch, first register your application and device with
-   the things network, to set or generate a DevAddr, NwkSKey and
-   AppSKey. Each device should have their own unique values for these
-   fields.
-
-   Do not forget to define the radio type correctly in config.h.
-
- *******************************************************************************/
-
-#include <lmic.h>
+#include <Arduino.h>
+#include "lmic.h"
 #include <hal/hal.h>
 #include <SPI.h>
-#include <CayenneLPP.h>
+#include <SSD1306.h>
+// #include <soc/efuse_reg.h>
 
-CayenneLPP lpp(100);
+#define LEDPIN 2
 
-// sampling data
-float  temp_C = 22.0;
-float  pressure = 900.0;
-float  lat = 18.796512;
-float  lon = 98.953319;
+#define OLED_I2C_ADDR 0x3C
+#define OLED_RESET 16
+#define OLED_SDA 21
+#define OLED_SCL 22
 
-// LoRaWAN end-device address (DevAddr)
-static const u4_t DEVADDR = 0x12EF0244;
+unsigned int counter = 0;
 
-// LoRaWAN NwkSKey, network session key
-static const PROGMEM u1_t NWKSKEY[16] = { 0x28, 0xAE, 0xD2, 0x2B, 0x7E, 0x15, 0x16, 0xA6, 0x09, 0xCF, 0xAB, 0xF7, 0x15, 0x88, 0x4F, 0x3C };
+SSD1306 display (OLED_I2C_ADDR, OLED_SDA, OLED_SCL);
 
-// LoRaWAN AppSKey, application session key
-static const u1_t PROGMEM APPSKEY[16] = { 0x16, 0x28, 0xAE, 0x2B, 0x7E, 0x15, 0xD2, 0xA6, 0xAB, 0xF7, 0xCF, 0x4F, 0x3C, 0x15, 0x88, 0x09 };
+/*************************************
+ * TODO: Change the following keys
+ * NwkSKey: network session key, AppSKey: application session key, and DevAddr: end-device address
+ *************************************/
+static const u4_t DEVADDR =  0xA4A5A623;
+static const PROGMEM u1_t NWKSKEY[16] = {0xA2,0x09,0x30,0x29,0x30,0x29,0x3D,0xD0,0x23,0x09,0x20,0x39,0x22,0x32,0x3A,0xB3};
+static const u1_t PROGMEM APPSKEY[16] = {0xA2,0x09,0x30,0x29,0x30,0x29,0x3D,0xD0,0x23,0x09,0x20,0x39,0x22,0x32,0x3A,0xB3};
 
-// These callbacks are only used in over-the-air activation, so they are
-// left empty here (we cannot leave them out completely unless
-// DISABLE_JOIN is set in config.h, otherwise the linker will complain).
 void os_getArtEui (u1_t* buf) { }
 void os_getDevEui (u1_t* buf) { }
 void os_getDevKey (u1_t* buf) { }
@@ -62,178 +38,216 @@ static osjob_t sendjob;
 
 // Schedule TX every this many seconds (might become longer due to duty
 // cycle limitations).
-const unsigned TX_INTERVAL = 30;
-/*
-// Pin mapping, Promini - original
+const unsigned TX_INTERVAL = 60;
+char TTN_response[30];
+
+// Pin mapping
+// SCK (5)
+// CS (18)
+// MISO (19)
+// MOSI (27)
+// RST (23)
+// DIO0 (26)
+// DIO1 (33)
+// DIO2 (32)
+// const lmic_pinmap lmic_pins = {
+// .nss = 18,
+// .rxtx = LMIC_UNUSED_PIN,
+// .rst = 14,
+// .dio = {26,  33,  32}
+// };
+// const lmic_pinmap lmic_pins = {
+//     .nss = 18,
+//     .rxtx = LMIC_UNUSED_PIN,
+//     .rst = 14,
+//     .dio = {/*dio0*/ 26, /*dio1*/ 33, /*dio2*/ 32}
+// };
+// const lmic_pinmap lmic_pins = {
+//     .nss = 18,
+//     .rxtx = LMIC_UNUSED_PIN,
+//     .rst = LMIC_UNUSED_PIN,
+//     //If DIO2 is not connected use:
+//     .dio = {/*dio0*/ 26, /*dio1*/ 33, /*dio2*/ LMIC_UNUSED_PIN}
+//     //If DIO2 is connected use:
+//     //.dio = {/*dio0*/ 26, /*dio1*/ 33, /*dio2*/ 32}
+// };
+// const lmic_pinmap lmic_pins = {
+//     .nss = 18,
+//     .rxtx = LMIC_UNUSED_PIN,
+//
+//     //For board revision V1.5 use GPIO12 for LoRa RST
+//     .rst = 12,
+//     //For board revision(s) newer than V1.5 use GPIO19 for LoRa RST
+//     //.rst = 19,
+//
+//     //If DIO2 is not connected use:
+//     .dio = {/*dio0*/ 26, /*dio1*/ 33, /*dio2*/ LMIC_UNUSED_PIN}
+//     //If DIO2 is connected use:
+//     //.dio = {/*dio0*/ 26, /*dio1*/ 33, /*dio2*/ 32}
+// };
+// // non arduino pin definitions
+// #define RST   LMIC_UNUSED_PIN // not sure
+// #define DIO0  26 // wired on PCB
+// #define DIO1  33 // needs to be wired external
+// #define DIO2  32 // needs to be wired external (but not necessary for LoRa)
+
 const lmic_pinmap lmic_pins = {
-    .nss = 10,
+    .nss = 18,
     .rxtx = LMIC_UNUSED_PIN,
-    .rst = 6,
-    .dio = {4, 5, 7},
+    .rst = 14,
+    .dio = {/*dio0*/ 26, /*dio1*/ 32, /*dio2*/ LMIC_UNUSED_PIN}
 };
-*/
-// Pin mapping: Promini - repin
-const lmic_pinmap lmic_pins = {
-  .nss = 0,
-  .rxtx = LMIC_UNUSED_PIN,
-  .rst = 1,
-  .dio = {6, 7, 8},
-};
+
+
+void do_send(osjob_t* j){
+    // Payload to send (uplink)
+    static uint8_t message[] = "Hello World!";
+
+    // Check if there is not a current TX/RX job running
+    if (LMIC.opmode & OP_TXRXPEND) {
+        Serial.println(F("OP_TXRXPEND, not sending"));
+    } else {
+        // Prepare upstream data transmission at the next possible time.
+        LMIC_setTxData2(1, message, sizeof(message)-1, 0);
+        Serial.println(F("Sending uplink packet..."));
+        digitalWrite(LEDPIN, HIGH);
+        display.clear();
+        display.drawString (0, 0, "Sending uplink packet...");
+        display.drawString (0, 50, String (++counter));
+        display.display ();
+    }
+    // Next TX is scheduled after TX_COMPLETE event.
+}
 
 void onEvent (ev_t ev) {
-  Serial.print(os_getTime());
-  Serial.print(": ");
-  switch (ev) {
-    case EV_SCAN_TIMEOUT:
-      Serial.println(F("EV_SCAN_TIMEOUT"));
-      break;
-    case EV_BEACON_FOUND:
-      Serial.println(F("EV_BEACON_FOUND"));
-      break;
-    case EV_BEACON_MISSED:
-      Serial.println(F("EV_BEACON_MISSED"));
-      break;
-    case EV_BEACON_TRACKED:
-      Serial.println(F("EV_BEACON_TRACKED"));
-      break;
-    case EV_JOINING:
-      Serial.println(F("EV_JOINING"));
-      break;
-    case EV_JOINED:
-      Serial.println(F("EV_JOINED"));
-      break;
-    case EV_RFU1:
-      Serial.println(F("EV_RFU1"));
-      break;
-    case EV_JOIN_FAILED:
-      Serial.println(F("EV_JOIN_FAILED"));
-      break;
-    case EV_REJOIN_FAILED:
-      Serial.println(F("EV_REJOIN_FAILED"));
-      break;
-    case EV_TXCOMPLETE:
-      Serial.println(F("EV_TXCOMPLETE (includes waiting for RX windows)"));
-      if (LMIC.txrxFlags & TXRX_ACK)
-        Serial.println(F("Received ack"));
-      if (LMIC.dataLen) {
-        Serial.println(F("Received "));
-        Serial.println(LMIC.rps);
-        Serial.println(LMIC.dataLen);
-        Serial.println(F(" bytes of payload"));
-      }
-      // Schedule next transmission
-      os_setTimedCallback(&sendjob, os_getTime() + sec2osticks(TX_INTERVAL), do_send);
-      break;
-    case EV_LOST_TSYNC:
-      Serial.println(F("EV_LOST_TSYNC"));
-      break;
-    case EV_RESET:
-      Serial.println(F("EV_RESET"));
-      break;
-    case EV_RXCOMPLETE:
-      // data received in ping slot
-      Serial.println(F("EV_RXCOMPLETE"));
-      break;
-    case EV_LINK_DEAD:
-      Serial.println(F("EV_LINK_DEAD"));
-      break;
-    case EV_LINK_ALIVE:
-      Serial.println(F("EV_LINK_ALIVE"));
-      break;
-    default:
-      Serial.println(F("Unknown event"));
-      break;
-  }
+    if (ev == EV_TXCOMPLETE) {
+        display.clear();
+        display.drawString (0, 0, "EV_TXCOMPLETE event!");
+
+
+        Serial.println(F("EV_TXCOMPLETE (includes waiting for RX windows)"));
+        if (LMIC.txrxFlags & TXRX_ACK) {
+          Serial.println(F("Received ack"));
+          display.drawString (0, 20, "Received ACK.");
+        }
+
+        if (LMIC.dataLen) {
+          int i = 0;
+          // data received in rx slot after tx
+          Serial.print(F("Data Received: "));
+          Serial.write(LMIC.frame+LMIC.dataBeg, LMIC.dataLen);
+          Serial.println();
+
+          display.drawString (0, 20, "Received DATA.");
+          for ( i = 0 ; i < LMIC.dataLen ; i++ )
+            TTN_response[i] = LMIC.frame[LMIC.dataBeg+i];
+          TTN_response[i] = 0;
+          display.drawString (0, 32, String(TTN_response));
+        }
+
+        // Schedule next transmission
+        os_setTimedCallback(&sendjob, os_getTime()+sec2osticks(TX_INTERVAL), do_send);
+        digitalWrite(LEDPIN, LOW);
+        display.drawString (0, 50, String (counter));
+        display.display ();
+    }
 }
 
-void do_send(osjob_t* j) {
-
-      //
-      // user may add data acquire from sensors here, and then add the data to lpp
-      // more lpp device support be visited https://www.thethingsnetwork.org/docs/devices/arduino/api/cayennelpp.html
-      //
-      // sent sampling data to Cayenne
-      temp_C     += 2;
-      pressure   += 10;
-
-      lpp.reset();
-      lpp.addTemperature(1, temp_C);
-      lpp.addBarometricPressure(2, pressure);
-      lpp.addGPS(3, lat, lon, 2);
-
-      // Check if there is not a current TX/RX job running
-      if (LMIC.opmode & OP_TXRXPEND) {
-        Serial.println(F("OP_TXRXPEND, not sending"));
-      } else {
-        // Prepare upstream data transmission at the next possible time.
-        LMIC_setTxData2(1, lpp.getBuffer(), lpp.getSize(), 0);
-        Serial.println(F("Packet queued"));
-      }
-      // Next TX is scheduled after TX_COMPLETE event.
-}
+// int getChipRevision()
+// {
+//   return (REG_READ(EFUSE_BLK0_RDATA3_REG) >> (EFUSE_RD_CHIP_VER_RESERVE_S)&&EFUSE_RD_CHIP_VER_RESERVE_V) ;
+// }
+//
+// void printESPRevision() {
+//   Serial.print("REG_READ(EFUSE_BLK0_RDATA3_REG) ");
+//   Serial.println(REG_READ(EFUSE_BLK0_RDATA3_REG), BIN);
+//
+//   Serial.print("EFUSE_RD_CHIP_VER_RESERVE_S ");
+//   Serial.println(EFUSE_RD_CHIP_VER_RESERVE_S, BIN);
+//
+//   Serial.print("EFUSE_RD_CHIP_VER_RESERVE_V ");
+//   Serial.println(EFUSE_RD_CHIP_VER_RESERVE_V, BIN);
+//
+//   Serial.println();
+//
+//   Serial.print("Chip Revision (official version): ");
+//   Serial.println(getChipRevision());
+//
+//   Serial.print("Chip Revision from shift Operation ");
+//   Serial.println(REG_READ(EFUSE_BLK0_RDATA3_REG) >> 15, BIN);
+//
+// }
 
 void setup() {
-  Serial.begin(9600);
-  Serial.println(F("Starting"));
+    Serial.begin(115200);
+    delay(1500);   // Give time for the seral monitor to start up
+    Serial.println(F("Starting..."));
 
-#ifdef VCC_ENABLE
-  // For Pinoccio Scout boards
-  pinMode(VCC_ENABLE, OUTPUT);
-  digitalWrite(VCC_ENABLE, HIGH);
-  delay(1000);
-#endif
+    // printESPRevision();
 
-  // LMIC init
-  os_init();
-  // Reset the MAC state. Session and pending data transfers will be discarded.
-  LMIC_reset();
+    // Use the Blue pin to signal transmission.
+    pinMode(LEDPIN,OUTPUT);
 
-  // Set static session parameters. Instead of dynamically establishing a session
-  // by joining the network, precomputed session parameters are be provided.
-#ifdef PROGMEM
-  // On AVR, these values are stored in flash and only copied to RAM
-  // once. Copy them to a temporary buffer here, LMIC_setSession will
-  // copy them into a buffer of its own again.
-  uint8_t appskey[sizeof(APPSKEY)];
-  uint8_t nwkskey[sizeof(NWKSKEY)];
-  memcpy_P(appskey, APPSKEY, sizeof(APPSKEY));
-  memcpy_P(nwkskey, NWKSKEY, sizeof(NWKSKEY));
-  LMIC_setSession (0x1, DEVADDR, nwkskey, appskey);
-#else
-  // If not running an AVR with PROGMEM, just use the arrays directly
-  LMIC_setSession (0x1, DEVADDR, NWKSKEY, APPSKEY);
-#endif
+   // reset the OLED
+   pinMode(OLED_RESET,OUTPUT);
+   digitalWrite(OLED_RESET, LOW);
+   delay(50);
+   digitalWrite(OLED_RESET, HIGH);
 
-    LMIC_setupChannel(0, 923200000, DR_RANGE_MAP(DR_SF12, DR_SF7),  BAND_CENTI);      // g-band
-    LMIC_setupChannel(1, 923400000, DR_RANGE_MAP(DR_SF12, DR_SF7B), BAND_CENTI);      // g-band
-    LMIC_setupChannel(2, 923600000, DR_RANGE_MAP(DR_SF12, DR_SF7),  BAND_CENTI);      // g-band
-    LMIC_setupChannel(3, 923800000, DR_RANGE_MAP(DR_SF12, DR_SF7),  BAND_CENTI);      // g-band
-    LMIC_setupChannel(4, 924000000, DR_RANGE_MAP(DR_SF12, DR_SF7),  BAND_CENTI);      // g-band
-    LMIC_setupChannel(5, 924200000, DR_RANGE_MAP(DR_SF12, DR_SF7),  BAND_CENTI);      // g-band
-    LMIC_setupChannel(6, 924400000, DR_RANGE_MAP(DR_SF12, DR_SF7),  BAND_CENTI);      // g-band
-    LMIC_setupChannel(7, 924600000, DR_RANGE_MAP(DR_SF12, DR_SF7),  BAND_CENTI);      // g-band
-    LMIC_setupChannel(8, 924800000, DR_RANGE_MAP(DR_FSK,  DR_FSK),  BAND_MILLI);      // g2-band
+   display.init ();
+   display.flipScreenVertically ();
+   display.setFont (ArialMT_Plain_10);
 
-  // TTN defines an additional channel at 869.525Mhz using SF9 for class B
-  // devices' ping slots. LMIC does not have an easy way to define set this
-  // frequency and support for class B is spotty and untested, so this
-  // frequency is not configured here.
+   display.setTextAlignment (TEXT_ALIGN_LEFT);
 
-  // Disable link check validation
-  LMIC_setLinkCheckMode(0);
+   display.drawString (0, 0, "Init!");
+   display.display ();
 
-  // TTN uses SF9 for its RX2 window.
-  // set SF12 for US
-  LMIC.dn2Dr = DR_SF9;
+    // LMIC init
+    os_init();
 
-  // Set data rate and transmit power for uplink (note: txpow seems to be ignored by the library)
-  // varite data rate is SF8, SF9, SF10 & SF11
-  LMIC_setDrTxpow(DR_SF10, 14);
+    // Reset the MAC state. Session and pending data transfers will be discarded.
+    LMIC_reset();
 
-  // Start job
-  do_send(&sendjob);
+    // Set up the channels used by the Things Network, which corresponds
+    // to the defaults of most gateways. Without this, only three base
+    // channels from the LoRaWAN specification are used, which certainly
+    // works, so it is good for debugging, but can overload those
+    // frequencies, so be sure to configure the full frequency range of
+    // your network here (unless your network autoconfigures them).
+    // Setting up channels should happen after LMIC_setSession, as that
+    // configures the minimal channel set.
+    LMIC_setupChannel(0, 868100000, DR_RANGE_MAP(DR_SF12, DR_SF7),  BAND_CENTI);      // g-band
+    LMIC_setupChannel(1, 868300000, DR_RANGE_MAP(DR_SF12, DR_SF7B), BAND_CENTI);      // g-band
+    LMIC_setupChannel(2, 868500000, DR_RANGE_MAP(DR_SF12, DR_SF7),  BAND_CENTI);      // g-band
+    LMIC_setupChannel(3, 867100000, DR_RANGE_MAP(DR_SF12, DR_SF7),  BAND_CENTI);      // g-band
+    LMIC_setupChannel(4, 867300000, DR_RANGE_MAP(DR_SF12, DR_SF7),  BAND_CENTI);      // g-band
+    LMIC_setupChannel(5, 867500000, DR_RANGE_MAP(DR_SF12, DR_SF7),  BAND_CENTI);      // g-band
+    LMIC_setupChannel(6, 867700000, DR_RANGE_MAP(DR_SF12, DR_SF7),  BAND_CENTI);      // g-band
+    LMIC_setupChannel(7, 867900000, DR_RANGE_MAP(DR_SF12, DR_SF7),  BAND_CENTI);      // g-band
+    LMIC_setupChannel(8, 868800000, DR_RANGE_MAP(DR_FSK,  DR_FSK),  BAND_MILLI);      // g2-band
+    // TTN defines an additional channel at 869.525Mhz using SF9 for class B
+    // devices' ping slots. LMIC does not have an easy way to define set this
+    // frequency and support for class B is spotty and untested, so this
+    // frequency is not configured here.
+
+    // Set static session parameters.
+    LMIC_setSession (0x1, DEVADDR, NWKSKEY, APPSKEY);
+
+    // Disable link check validation
+    LMIC_setLinkCheckMode(0);
+
+    // TTN uses SF9 for its RX2 window.
+    LMIC.dn2Dr = DR_SF9;
+
+    // Set data rate and transmit power for uplink (note: txpow seems to be ignored by the library)
+    //LMIC_setDrTxpow(DR_SF11,14);
+    LMIC_setDrTxpow(DR_SF9,14);
+
+    // Start job
+    do_send(&sendjob);
 }
 
 void loop() {
-  os_runloop_once();
+    os_runloop_once();
 }
