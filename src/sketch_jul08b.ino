@@ -124,7 +124,6 @@ void onEvent (ev_t ev) {
         display.clear();
         display.drawString (0, 0, "EV_TXCOMPLETE event!");
 
-
         Serial.println(F("EV_TXCOMPLETE (includes waiting for RX windows)"));
         if (LMIC.txrxFlags & TXRX_ACK) {
           Serial.println(F("Received ack"));
@@ -153,30 +152,104 @@ void onEvent (ev_t ev) {
     }
 }
 
-// int getChipRevision()
-// {
-//   return (REG_READ(EFUSE_BLK0_RDATA3_REG) >> (EFUSE_RD_CHIP_VER_RESERVE_S)&&EFUSE_RD_CHIP_VER_RESERVE_V) ;
+
+// void onEvent (ev_t ev) {
+//   Serial.print(os_getTime());
+//   display.setCursor(0, 5);
+//   display.printf("TIME %lu", os_getTime());
+//   Serial.print(": ");
+//   switch (ev) {
+// case EV_SCAN_TIMEOUT:
+//   Serial.println(F("EV_SCAN_TIMEOUT"));
+//   display.drawString(0, 7, "EV_SCAN_TIMEOUT");
+//   break;
+// case EV_BEACON_FOUND:
+//   Serial.println(F("EV_BEACON_FOUND"));
+//   display.drawString(0, 7, "EV_BEACON_FOUND");
+//   break;
+// case EV_BEACON_MISSED:
+//   Serial.println(F("EV_BEACON_MISSED"));
+//   display.drawString(0, 7, "EV_BEACON_MISSED");
+//   break;
+// case EV_BEACON_TRACKED:
+//   Serial.println(F("EV_BEACON_TRACKED"));
+//   display.drawString(0, 7, "EV_BEACON_TRACKED");
+//   break;
+// case EV_JOINING:
+//   Serial.println(F("EV_JOINING"));
+//   display.drawString(0, 7, "EV_JOINING");
+//   break;
+// case EV_JOINED:
+//   Serial.println(F("EV_JOINED"));
+//   display.drawString(0, 7, "EV_JOINED ");
+//
+//   // Disable link check validation (automatically enabled
+//   // during join, but not supported by TTN at this time).
+//   LMIC_setLinkCheckMode(0);
+//   break;
+// case EV_RFU1:
+//   Serial.println(F("EV_RFU1"));
+//   display.drawString(0, 7, "EV_RFUI");
+//   break;
+// case EV_JOIN_FAILED:
+//   Serial.println(F("EV_JOIN_FAILED"));
+//   display.drawString(0, 7, "EV_JOIN_FAILED");
+//   break;
+// case EV_REJOIN_FAILED:
+//   Serial.println(F("EV_REJOIN_FAILED"));
+//   display.drawString(0, 7, "EV_REJOIN_FAILED");
+//   //break;
+//   break;
+// case EV_TXCOMPLETE:
+//   Serial.println(F("EV_TXCOMPLETE (includes waiting for RX windows)"));
+//   display.drawString(0, 7, "EV_TXCOMPLETE");
+//   digitalWrite(BUILTIN_LED, LOW);
+//   if (LMIC.txrxFlags & TXRX_ACK) {
+//     Serial.println(F("Received ack"));
+//     display.drawString(0, 7, "Received ACK");
+//   }
+//   if (LMIC.dataLen) {
+//     Serial.println(F("Received "));
+//     display.drawString(0, 6, "RX ");
+//     Serial.println(LMIC.dataLen);
+//     display.setCursor(4, 6);
+//     display.printf("%i bytes", LMIC.dataLen);
+//     Serial.println(F(" bytes of payload"));
+//     display.setCursor(0, 7);
+//     display.printf("RSSI %d SNR %.1d", LMIC.rssi, LMIC.snr);
+//   }
+//   // Schedule next transmission
+//   os_setTimedCallback(&sendjob, os_getTime() + sec2osticks(TX_INTERVAL), do_send);
+//   break;
+// case EV_LOST_TSYNC:
+//   Serial.println(F("EV_LOST_TSYNC"));
+//   display.drawString(0, 7, "EV_LOST_TSYNC");
+//   break;
+// case EV_RESET:
+//   Serial.println(F("EV_RESET"));
+//   display.drawString(0, 7, "EV_RESET");
+//   break;
+// case EV_RXCOMPLETE:
+//   // data received in ping slot
+//   Serial.println(F("EV_RXCOMPLETE"));
+//   display.drawString(0, 7, "EV_RXCOMPLETE");
+//   break;
+// case EV_LINK_DEAD:
+//   Serial.println(F("EV_LINK_DEAD"));
+//   display.drawString(0, 7, "EV_LINK_DEAD");
+//   break;
+// case EV_LINK_ALIVE:
+//   Serial.println(F("EV_LINK_ALIVE"));
+//   display.drawString(0, 7, "EV_LINK_ALIVE");
+//   break;
+// default:
+//   Serial.println(F("Unknown event"));
+//   display.setCursor(0, 7);
+//   display.printf("UNKNOWN EVENT %d", ev);
+//   break;
+//   }
 // }
-//
-// void printESPRevision() {
-//   Serial.print("REG_READ(EFUSE_BLK0_RDATA3_REG) ");
-//   Serial.println(REG_READ(EFUSE_BLK0_RDATA3_REG), BIN);
-//
-//   Serial.print("EFUSE_RD_CHIP_VER_RESERVE_S ");
-//   Serial.println(EFUSE_RD_CHIP_VER_RESERVE_S, BIN);
-//
-//   Serial.print("EFUSE_RD_CHIP_VER_RESERVE_V ");
-//   Serial.println(EFUSE_RD_CHIP_VER_RESERVE_V, BIN);
-//
-//   Serial.println();
-//
-//   Serial.print("Chip Revision (official version): ");
-//   Serial.println(getChipRevision());
-//
-//   Serial.print("Chip Revision from shift Operation ");
-//   Serial.println(REG_READ(EFUSE_BLK0_RDATA3_REG) >> 15, BIN);
-//
-// }
+
 
 void setup() {
     SPI.begin(5,19,27);
@@ -218,15 +291,17 @@ void setup() {
     // your network here (unless your network autoconfigures them).
     // Setting up channels should happen after LMIC_setSession, as that
     // configures the minimal channel set.
-    LMIC_setupChannel(0, 868100000, DR_RANGE_MAP(DR_SF12, DR_SF7),  BAND_CENTI);      // g-band
-    LMIC_setupChannel(1, 868300000, DR_RANGE_MAP(DR_SF12, DR_SF7B), BAND_CENTI);      // g-band
-    LMIC_setupChannel(2, 868500000, DR_RANGE_MAP(DR_SF12, DR_SF7),  BAND_CENTI);      // g-band
-    LMIC_setupChannel(3, 867100000, DR_RANGE_MAP(DR_SF12, DR_SF7),  BAND_CENTI);      // g-band
-    LMIC_setupChannel(4, 867300000, DR_RANGE_MAP(DR_SF12, DR_SF7),  BAND_CENTI);      // g-band
-    LMIC_setupChannel(5, 867500000, DR_RANGE_MAP(DR_SF12, DR_SF7),  BAND_CENTI);      // g-band
-    LMIC_setupChannel(6, 867700000, DR_RANGE_MAP(DR_SF12, DR_SF7),  BAND_CENTI);      // g-band
-    LMIC_setupChannel(7, 867900000, DR_RANGE_MAP(DR_SF12, DR_SF7),  BAND_CENTI);      // g-band
-    LMIC_setupChannel(8, 868800000, DR_RANGE_MAP(DR_FSK,  DR_FSK),  BAND_MILLI);      // g2-band
+    LMIC_setupChannel(0, 923200000, DR_RANGE_MAP(DR_SF12, DR_SF7),  BAND_CENTI);      // g-band
+    LMIC_setupChannel(1, 923400000, DR_RANGE_MAP(DR_SF12, DR_SF7B), BAND_CENTI);      // g-band
+    LMIC_setupChannel(2, 923600000, DR_RANGE_MAP(DR_SF12, DR_SF7),  BAND_CENTI);      // g-band
+    LMIC_setupChannel(3, 923800000, DR_RANGE_MAP(DR_SF12, DR_SF7),  BAND_CENTI);      // g-band
+    LMIC_setupChannel(4, 924000000, DR_RANGE_MAP(DR_SF12, DR_SF7),  BAND_CENTI);      // g-band
+    LMIC_setupChannel(5, 924200000, DR_RANGE_MAP(DR_SF12, DR_SF7),  BAND_CENTI);      // g-band
+    LMIC_setupChannel(6, 924400000, DR_RANGE_MAP(DR_SF12, DR_SF7),  BAND_CENTI);      // g-band
+    LMIC_setupChannel(7, 924600000, DR_RANGE_MAP(DR_SF12, DR_SF7),  BAND_CENTI);      // g-band
+    LMIC_setupChannel(8, 924800000, DR_RANGE_MAP(DR_FSK,  DR_FSK),  BAND_MILLI);      // g2-band
+
+
     // TTN defines an additional channel at 869.525Mhz using SF9 for class B
     // devices' ping slots. LMIC does not have an easy way to define set this
     // frequency and support for class B is spotty and untested, so this
